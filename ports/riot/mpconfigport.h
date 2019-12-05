@@ -70,6 +70,9 @@
 #define MICROPY_PY_MACHINE_ADC          (1)
 #endif
 #define MICROPY_PY_MACHINE_SPI_MAKE_NEW machine_hw_spi_make_new
+#ifdef MODULE_SAUL
+#define MICROPY_PY_RIOT_SAUL            (1)
+#endif
 #ifdef CONFIG_NETWORKING
 // If we have networking, we likely want errno comfort
 #define MICROPY_PY_UERRNO               (1)

@@ -36,9 +36,14 @@ STATIC mp_obj_t mod_thread_getpid(void) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_0(mod_thread_getpid_obj, mod_thread_getpid);
 
+extern const mp_obj_module_t mp_module_riot_saul;
+
 STATIC const mp_rom_map_elem_t mp_module_riot_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_riot) },
     { MP_ROM_QSTR(MP_QSTR_thread_getpid), MP_ROM_PTR(&mod_thread_getpid_obj) },
+#if MICROPY_PY_RIOT_SAUL
+    { MP_ROM_QSTR(MP_QSTR_saul), MP_ROM_PTR(&mp_module_riot_saul)},
+#endif
 };
 
 STATIC MP_DEFINE_CONST_DICT(mp_module_riot_globals, mp_module_riot_globals_table);
