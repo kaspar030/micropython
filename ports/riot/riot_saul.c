@@ -66,13 +66,19 @@ const mp_obj_base_t riot_saul_dev_act_obj_template = {&riot_saul_dev_act_type};
 ///      dev_bar = reg.find_name("foo")
 ///      dev_foobar = reg.find_type(saul.ACT_SWITCH)
 ///
-/// Registered devices are implemented as singletons.
+/// Registered devices are implemented as singletons. The same device object is
+/// returned when requesting the same index multiple times.
+///
+/// Iterating over the devices in the registry is also possible:
+///
+///      for device in reg:
+///          print(device.read())
 ///
 /// A device supports reading and writing values, depending on the device type
 /// and the driver implementation. A NotImplemented exception will be raised if
 /// the underlying device driver does not support the call.
 ///
-/// A succesful read from a device will return a list of floating point numbers
+/// A successful read from a device will return a list of floating point numbers
 /// with the list length depending on the number of dimensions returned by the
 /// device.
 ///
@@ -89,15 +95,16 @@ const mp_obj_base_t riot_saul_dev_act_obj_template = {&riot_saul_dev_act_type};
 ///
 /// The type of the device is available in the type property:
 ///
-///      switch.type
+///      switch.type()
 ///
 /// All type number have a matching property in the saul module:
 ///
-///     switch.type == saul.ACT_SWITCH
+///     switch.type() == saul.ACT_SWITCH
 
 typedef struct _riot_saul_reg_obj_t {
     mp_obj_base_t base;
     saul_reg_t **saul_reg;
+    saul_reg_t *iter;
     mp_obj_t list;
 } riot_saul_reg_obj_t;
 
@@ -133,17 +140,14 @@ static float _phydat_to_float(int16_t val, int8_t scale) {
     return fval * powf(10, scale);
 }
 
-STATIC void riot_saul_dev_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
+STATIC mp_obj_t riot_saul_dev_type(mp_obj_t self_in) {
     riot_saul_dev_obj_t *self = MP_OBJ_TO_PTR(self_in);
-
-    if (dest[0] == MP_OBJ_NULL) {
-        if (attr == MP_QSTR_type) {
-            dest[0] = MP_OBJ_NEW_SMALL_INT(self->saul_reg->driver->type);
-        }
-    }
+    return MP_OBJ_NEW_SMALL_INT(self->saul_reg->driver->type);
 }
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(riot_saul_dev_type_obj,
+                                 riot_saul_dev_type);
 
-STATIC mp_obj_t dev_read(mp_obj_t self_in) {
+STATIC mp_obj_t riot_saul_dev_read(mp_obj_t self_in) {
     phydat_t data = {.val = {PHYDAT_MIN, PHYDAT_MIN, PHYDAT_MIN}};
     riot_saul_dev_obj_t *self = self_in;
 
@@ -158,21 +162,16 @@ STATIC mp_obj_t dev_read(mp_obj_t self_in) {
     else if (res == -ECANCELED) {
         mp_raise_OSError(MP_EIO);
     }
-    // TODO: rewrite to const new list implementation `mp_obj_new_list(len,
-    // objects)
-    mp_obj_t data_list = mp_obj_new_list((size_t)res, NULL);
+    mp_obj_t data_list = mp_obj_new_list(0, NULL);
     for (size_t i = 0; i < (size_t)res; i++) {
-        if (data.val[i] != PHYDAT_MIN) {
-            float fdata;
-            fdata = _phydat_to_float(data.val[i], data.scale);
-            mp_obj_list_append(data_list, mp_obj_new_float(fdata));
-        }
+        float fdata = _phydat_to_float(data.val[i], data.scale);
+        mp_obj_list_append(data_list, mp_obj_new_float(fdata));
     }
-    return data_list;
+    return MP_OBJ_TO_PTR(data_list);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(dev_read_obj, dev_read);
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(riot_saul_dev_read_obj, riot_saul_dev_read);
 
-STATIC mp_obj_t dev_write(mp_obj_t self_in, mp_obj_t values) {
+STATIC mp_obj_t riot_saul_dev_write(mp_obj_t self_in, mp_obj_t values) {
     riot_saul_dev_obj_t *self = self_in;
     phydat_t data;
     int32_t ilist[PHYDAT_DIM] = { 0 };
@@ -203,12 +202,13 @@ STATIC mp_obj_t dev_write(mp_obj_t self_in, mp_obj_t values) {
     }
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_2(dev_write_obj, dev_write);
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(riot_saul_dev_write_obj, riot_saul_dev_write);
 
 // SAUL device methods and properties
 STATIC const mp_rom_map_elem_t riot_saul_dev_locals_dict_table[] = {
-    { MP_ROM_QSTR(MP_QSTR_read),  MP_ROM_PTR(&dev_read_obj) },
-    { MP_ROM_QSTR(MP_QSTR_write),  MP_ROM_PTR(&dev_write_obj) },
+    { MP_ROM_QSTR(MP_QSTR_read),  MP_ROM_PTR(&riot_saul_dev_read_obj) },
+    { MP_ROM_QSTR(MP_QSTR_write),  MP_ROM_PTR(&riot_saul_dev_write_obj) },
+    { MP_ROM_QSTR(MP_QSTR_type),  MP_ROM_PTR(&riot_saul_dev_type_obj) },
 };
 
 STATIC MP_DEFINE_CONST_DICT(riot_saul_dev_locals_dict,
@@ -218,7 +218,6 @@ const mp_obj_type_t riot_saul_dev_undef_type = {
     { &mp_type_type },
     .name = MP_QSTR_saul_device,
     .print = riot_saul_dev_print,
-    .attr = riot_saul_dev_attr,
     .locals_dict = (mp_obj_t)&riot_saul_dev_locals_dict,
 };
 
@@ -226,7 +225,6 @@ const mp_obj_type_t riot_saul_dev_act_type = {
     { &mp_type_type },
     .name = MP_QSTR_saul_actuator,
     .print = riot_saul_dev_act_print,
-    .attr = riot_saul_dev_attr,
     .locals_dict = (mp_obj_t)&riot_saul_dev_locals_dict,
     .parent = &riot_saul_dev_undef_type,
 };
@@ -235,7 +233,6 @@ const mp_obj_type_t riot_saul_dev_sense_type = {
     { &mp_type_type },
     .name = MP_QSTR_saul_sensor,
     .print = riot_saul_dev_sense_print,
-    .attr = riot_saul_dev_attr,
     .locals_dict = (mp_obj_t)&riot_saul_dev_locals_dict,
     .parent = &riot_saul_dev_undef_type,
 };
@@ -317,6 +314,18 @@ STATIC mp_obj_t riot_saul_reg_find_name(mp_obj_t self_in, mp_obj_t name) {
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(riot_saul_reg_find_name_obj,
                                  riot_saul_reg_find_name);
 
+STATIC mp_obj_t riot_saul_reg_iter(mp_obj_t self_in) {
+    riot_saul_reg_obj_t *self = MP_OBJ_TO_PTR(self_in);
+
+    if (self->iter == NULL) {
+        self->iter = *self->saul_reg;
+        return MP_OBJ_STOP_ITERATION;
+    }
+    mp_obj_t dev_obj = _get_mp_saul_device(self, self->iter);
+    self->iter = self->iter->next;
+    return MP_OBJ_TO_PTR(dev_obj);
+}
+
 STATIC mp_obj_t riot_saul_reg_subscr(mp_obj_t self_in, mp_obj_t index, mp_obj_t value) {
     riot_saul_reg_obj_t *self = MP_OBJ_TO_PTR(self_in);
     if (value == MP_OBJ_SENTINEL) {
@@ -351,6 +360,8 @@ const mp_obj_type_t riot_saul_reg_type = {
     { &mp_type_type },
     .name = MP_QSTR_saul_registry,
     .print = riot_saul_reg_print,
+    .getiter = mp_identity_getiter,
+    .iternext = riot_saul_reg_iter,
     .subscr = riot_saul_reg_subscr,
     .locals_dict = (mp_obj_t)&riot_saul_reg_locals_dict,
 };
@@ -358,6 +369,7 @@ const mp_obj_type_t riot_saul_reg_type = {
 STATIC mp_obj_t mod_get_registry(void) {
     if (riot_saul_reg_obj.list == MP_OBJ_NULL) {
         riot_saul_reg_obj.list = mp_obj_new_list(0, NULL);
+        riot_saul_reg_obj.iter = *riot_saul_reg_obj.saul_reg;
     }
     return MP_OBJ_FROM_PTR(&riot_saul_reg_obj);
 }
