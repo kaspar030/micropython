@@ -93,7 +93,7 @@
 #define MICROPY_PY_SYS_PLATFORM         "RIOT"
 
 #define MICROPY_HW_BOARD_NAME           "riot-" RIOT_BOARD
-#define MICROPY_HW_MCU_NAME             RIOT_MCU
+#define MICROPY_HW_MCU_NAME             RIOT_CPU
 
 #define MICROPY_MODULE_FROZEN_STR       (1)
 
