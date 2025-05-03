@@ -52,7 +52,11 @@ const mp_obj_base_t machine_pin_obj_template = {&machine_pin_type};
 
 STATIC void machine_pin_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
     machine_pin_obj_t *self = self_in;
+#ifndef MODULE_PERIPH_GPIO_EXP
     mp_printf(print, "<Pin %u>", (unsigned)self->pin);
+#else
+    mp_printf(print, "<Pin (%d,%d)>", gpio_port_num(self->pin), self->pin.pin);
+#endif
 }
 
 // pin.init(mode, *, value)
